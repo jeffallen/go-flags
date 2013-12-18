@@ -31,9 +31,6 @@ verbose = true
 ; Option only available in ini
 only-ini =
 
-; Newline in a description
-Newline =
-
 [Other Options]
 ; A slice of strings
 ; StringSlice =
