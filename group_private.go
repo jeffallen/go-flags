@@ -94,6 +94,10 @@ func (g *Group) scanStruct(realval reflect.Value, sfield *reflect.StructField, h
 
 		mtag := newMultiTag(string(field.Tag))
 
+		if err := mtag.Parse(); err != nil {
+			return err
+		}
+
 		// Skip fields with the no-flag tag
 		if mtag.Get("no-flag") != "" {
 			continue
@@ -168,8 +172,40 @@ func (g *Group) scanStruct(realval reflect.Value, sfield *reflect.StructField, h
 	return nil
 }
 
+func (g *Group) checkForDuplicateFlags() *Error {
+	shortNames := make(map[rune]*Option)
+	longNames := make(map[string]*Option)
+
+	var duplicateError *Error = nil
+
+	g.eachGroup(func(g *Group) {
+		for _, option := range g.options {
+			if option.LongName != "" {
+				if otherOption, ok := longNames[option.LongName]; ok {
+					duplicateError = newErrorf(ErrDuplicatedFlag, "option `%s' uses the same long name as option `%s'", option, otherOption)
+					return
+				}
+				longNames[option.LongName] = option
+			}
+			if option.ShortName != 0 {
+				if otherOption, ok := shortNames[option.ShortName]; ok {
+					duplicateError = newErrorf(ErrDuplicatedFlag, "option `%s' uses the same short name as option `%s'", option, otherOption)
+					return
+				}
+				shortNames[option.ShortName] = option
+			}
+		}
+	})
+
+	return duplicateError
+}
+
 func (g *Group) scanSubGroupHandler(realval reflect.Value, sfield *reflect.StructField) (bool, error) {
 	mtag := newMultiTag(string(sfield.Tag))
+
+	if err := mtag.Parse(); err != nil {
+		return true, err
+	}
 
 	subgroup := mtag.Get("group")
 
@@ -203,7 +239,15 @@ func (g *Group) scanType(handler scanHandler) error {
 
 	realval := reflect.Indirect(ptrval)
 
-	return g.scanStruct(realval, nil, handler)
+	if err := g.scanStruct(realval, nil, handler); err != nil {
+		return err
+	}
+
+	if err := g.checkForDuplicateFlags(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (g *Group) scan() error {
